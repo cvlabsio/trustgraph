@@ -3,33 +3,61 @@ services:
 
   pdf-decoder:
     module: trustgraph.decoder.pdf
+    parameters:
+      input_queue: document-load
+      output_queue: text-doc-load
 
   chunker:
     module: trustgraph.chunker.recursive
+    parameters:
+      input_queue: text-doc-load
+      output_queue: chunk-load
 
   vectorize:
     module: trustgraph.embeddings.vectorize
+    parameters:
+      input_queue: chunk-load
+      output_queue: vectors-chunk-load
     
   embeddings:
     module: trustgraph.embeddings.hf
+    parameters:
+      input_queue: embeddings
+      output_queue: embeddings-response
     
   kg-extract-definitions:
     module: trustgraph.kg.extract_definitions
+    parameters:
+      input_queue: vectors-chunk-load
+      output_queue: graph-load
 
   kg-extract-relationships:
     module: trustgraph.kg.extract_relationships
+    parameters:
+      input_queue: vectors-chunk-load
+      output_queue: graph-load
+      vector_queue: vectors-load
     
   vector-write:
     module: trustgraph.vector.milvus_write
+    parameters:
+      input_queue: vectors-load
     
   graph-write:
     module: trustgraph.graph.cassandra_write
+    parameters:
+      input_queue: graph-load
     
   llm:
     module: trustgraph.llm.ollama_text
     parameters:
+      input_queue: llm-complete-text
+      output_queue: llm-complete-text-response
       ollama: http://ollama:11434
 
   graph-rag:
     module: trustgraph.rag.graph
+    parameters:
+      input_queue: graph-rag-query
+      output_queue: graph-rag-response
 
