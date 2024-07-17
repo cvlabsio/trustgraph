@@ -12,6 +12,7 @@ import os
 import argparse
 from langchain_community.llms import Ollama
 import time
+from prometheus_client import start_http_server, Histogram, Info, Counter
 
 from ... schema import TextCompletionRequest, TextCompletionResponse
 from ... log_level import LogLevel
@@ -22,6 +23,13 @@ default_output_queue = 'llm-complete-text-response'
 default_subscriber = 'llm-ollama-text'
 default_model = 'gemma2'
 default_ollama = 'http://localhost:11434'
+
+metrics_port = 8000
+
+request_metric = Histogram('request_latency_seconds', 'Request histogram')
+model_metric = Info('model', 'Model configuration')
+pubsub_metric = Info('pubsub', 'Pub/sub configuration')
+processing_metric = Counter('processing_count', 'Processing count', ["status"])
 
 class Processor:
 
@@ -61,34 +69,40 @@ class Processor:
 
             msg = self.consumer.receive()
 
-            try:
+            with request_metric.time():
 
-                v = msg.value()
+                try:
 
-	        # Sender-produced ID
+                    v = msg.value()
 
-                id = msg.properties()["id"]
+                    # Sender-produced ID
 
-                print(f"Handling prompt {id}...", flush=True)
+                    id = msg.properties()["id"]
 
-                prompt = v.prompt
-                response = self.llm.invoke(prompt)
+                    print(f"Handling prompt {id}...", flush=True)
 
-                print("Send response...", flush=True)
-                r = TextCompletionResponse(response=response)
-                self.producer.send(r, properties={"id": id})
+                    prompt = v.prompt
+                    response = self.llm.invoke(prompt)
 
-                print("Done.", flush=True)
+                    print("Send response...", flush=True)
+                    r = TextCompletionResponse(response=response)
+                    self.producer.send(r, properties={"id": id})
 
-                # Acknowledge successful processing of the message
-                self.consumer.acknowledge(msg)
+                    print("Done.", flush=True)
 
-            except Exception as e:
+                    # Acknowledge successful processing of the message
+                    self.consumer.acknowledge(msg)
 
-                print("Exception:", e, flush=True)
+                    processing_metric.labels(status="success").inc()
 
-                # Message failed to be processed
-                self.consumer.negative_acknowledge(msg)
+                except Exception as e:
+
+                    print("Exception:", e, flush=True)
+
+                    # Message failed to be processed
+                    self.consumer.negative_acknowledge(msg)
+
+                    processing_metric.labels(status="error").inc()
 
     def __del__(self):
 
@@ -148,7 +162,8 @@ def run():
 
     args = parser.parse_args()
 
-    
+    start_http_server(metrics_port)
+
     while True:
 
         try:
@@ -161,6 +176,21 @@ def run():
                 log_level=args.log_level,
                 model=args.model,
                 ollama=args.ollama,
+            )
+
+            model_metric.info(
+                {
+                    "model": args.model,
+                    "ollama": args.ollama,
+                }
+            )
+
+            pubsub_metric.info(
+                {
+                    "input": args.input_queue,
+                    "output": args.output_queue,
+                    "subscriber": args.subscriber,
+                }
             )
 
             p.run()
