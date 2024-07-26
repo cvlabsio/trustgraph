@@ -4,13 +4,83 @@ import argparse
 import pulsar
 import _pulsar
 import time
+import threading
 from prometheus_client import start_http_server, Info
 
-from .. log_level import LogLevel
+from ... log_level import LogLevel
+
+class BaseProducer:
+
+    def __init__(self, processor, producer):
+        self.processor = processor
+        self.producer = producer
+
+    def send(self, msg, properties={}):
+        self.producer.send(msg, properties)
+
+class BaseConsumer:
+
+    def __init__(self, processor, consumer):
+        self.processor = processor
+        self.consumer = consumer
+        self.running = True
+
+    def receive(self):
+        return self.consumer.receive()
+
+    def loop(self, handle):
+
+        while self.running:
+
+            msg = self.receive()
+
+            try:
+
+                handle(msg)
+
+                # Acknowledge successful processing of the message
+                self.consumer.acknowledge(msg)
+
+            except Exception as e:
+
+                print("Exception:", e, flush=True)
+
+                # Message failed to be processed
+                self.consumer.negative_acknowledge(msg)
+
+    def run(self, handle):
+        self.start(handle)
+        self.join()
+
+    def start(self, handle):
+        self.thread = threading.Thread(target=self.loop, args=(handle,))
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+
+    def join(self):
+        self.thread.join()
 
 class BaseProcessor:
 
     default_pulsar_host = os.getenv("PULSAR_HOST", 'pulsar://pulsar:6650')
+
+    def create_producer(self, topic, schema):
+    
+        producer = self.client.create_producer(
+            topic=topic, schema=schema,
+        )
+
+        return BaseProducer(self, producer)
+
+    def create_consumer(self, topic, subscriber, schema):
+
+        consumer = self.client.subscribe(
+            topic, subscriber, schema=schema,
+        )
+
+        return BaseConsumer(self, consumer)
 
     def __init__(self, **params):
 
@@ -88,8 +158,6 @@ class BaseProcessor:
 
         args = parser.parse_args()
         args = vars(args)
-
-        print(args)
 
         if args["metrics"]:
             start_http_server(args["metrics_port"])

@@ -2,7 +2,7 @@
 from pulsar.schema import JsonSchema
 from prometheus_client import Histogram, Info, Counter
 
-from . base_processor import BaseProcessor
+from . basic import BaseProcessor
 
 # FIXME: Derive from consumer?  And producer?
 
@@ -52,9 +52,9 @@ class ConsumerProducer(BaseProcessor):
         if output_schema == None:
             raise RuntimeError("output_schema must be specified")
 
-        self.consumer = self.client.subscribe(
+        self.consumer = self.create_consumer(
             input_queue, subscriber,
-            schema=JsonSchema(input_schema),
+            schema=JsonSchema(input_schema)
         )
 
         self.producer = self.client.create_producer(
@@ -63,12 +63,19 @@ class ConsumerProducer(BaseProcessor):
         )
 
     def run(self):
+        self.consumer.run(self.handle)
 
-        while True:
+    def loop(self):
+
+        while self.running:
 
             msg = self.consumer.receive()
 
             try:
+
+                # FIXME: Base doesn't handle metrics!!!
+
+                # I don't want this method!
 
                 with __class__.request_metric.time():
                     resp = self.handle(msg)

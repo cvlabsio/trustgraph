@@ -2,7 +2,7 @@
 from pulsar.schema import JsonSchema
 from prometheus_client import Info, Counter
 
-from . base_processor import BaseProcessor
+from . basic import BaseProcessor
 
 class Producer(BaseProcessor):
 

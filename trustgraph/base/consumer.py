@@ -2,7 +2,7 @@
 from pulsar.schema import JsonSchema
 from prometheus_client import start_http_server, Histogram, Info, Counter
 
-from . base_processor import BaseProcessor
+from . basic import BaseProcessor
 
 class Consumer(BaseProcessor):
 
@@ -38,12 +38,20 @@ class Consumer(BaseProcessor):
             "input_schema": input_schema.__name__,
         })
 
-        self.consumer = self.client.subscribe(
+        # self.consumer = self.client.subscribe(
+        #     input_queue, subscriber,
+        #     schema=JsonSchema(input_schema),
+        # )
+
+        self.consumer = self.create_consumer(
             input_queue, subscriber,
-            schema=JsonSchema(input_schema),
+            schema=JsonSchema(input_schema)
         )
 
     def run(self):
+        self.consumer.run()
+        
+    def OLDrun(self):
 
         while True:
 
